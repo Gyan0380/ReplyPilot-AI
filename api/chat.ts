@@ -8,8 +8,9 @@ if (!admin.apps.length) {
     const serviceAccountKey = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
     
     if (serviceAccountKey) {
-      // Fixes the \n newline issue in Vercel environment variables
-      const serviceAccount = JSON.parse(serviceAccountKey);
+      let serviceAccount = JSON.parse(serviceAccountKey);
+      
+      // Clean up private key newlines safely
       if (serviceAccount.private_key) {
         serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
       }
@@ -39,9 +40,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'Message is required' });
     }
 
-    // Call Gemini AI using the correct SDK method
+    // Updated to use the correct model name
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.6-flash',
       contents: message,
     });
 
