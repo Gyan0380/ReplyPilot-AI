@@ -74,7 +74,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const userId = sender || 'default_user';
 
-    // 3. User Chat History Fetch Karna (Is client ke alag folder se)
+    // 3. User Chat History Fetch Karna
     let userHistory: any[] = [];
     const historyRef = db.collection('licenses').doc(licenseKey).collection('chats').doc(userId).collection('messages');
     const snapshot = await historyRef.orderBy('timestamp', 'asc').limit(10).get();
@@ -83,6 +83,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const data = doc.data();
       userHistory.push({ role: data.role, parts: [{ text: data.text }] });
     });
+
+    // Add current message to contents array for context
+    const contents = [
+      ...userHistory,
+      { role: 'user', parts: [{ text: message }] }
+    ];
 
     const offTopicRule = clientSettings.allowOffTopic 
       ? "Engage politely if user chats casually." 
@@ -96,23 +102,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       Never share data of other clients.
     `;
 
-    const chat = ai.chats.create({
+    // Generate content with full history and system instruction
+    const response = await ai.models.generateContent({
       model: 'gemini-1.5-flash',
-      history: userHistory,
-      config: { systemInstruction }
+      contents: contents,
+      config: {
+        systemInstruction: systemInstruction
+      }
     });
 
-    const result = await chat.sendMessage({ message });
-    const reply = result.text || "Sorry, I couldn't process that.";
+    const reply = response.text || "Sorry, I couldn't process that.";
 
-    // Chat History Save
+    // Chat History Save in Firestore
     await historyRef.add({ role: 'user', text: message, timestamp: currentTime });
-    await historyRef.add({ role: 'model', text: reply, timestamp: currentTime });
+    await historyRef.add({ role: 'model', text: reply, timestamp: currentTime + 1 });
 
     return res.status(200).json({ reply });
 
   } catch (error: any) {
-    console.error("API Error:", error);
+    console.ch ?? console.error("API Error:", error);
     return res.status(500).json({ error: error.message || 'Internal Server Error' });
   }
 }
