@@ -51,22 +51,26 @@ export default function Dashboard({ user }: { user: User }) {
       if (!keySnap.exists()) return alert("Invalid Key");
       if (keySnap.data().status === "USED") return alert("Key already used!");
 
-      const duration = Number(keySnap.data().durationDays);
-      const limit = Number(keySnap.data().msgLimit);
+      const data = keySnap.data();
+      const duration = Number(data.durationDays) || 30;
+      const limit = Number(data.msgLimit) || 400; // Fix for old keys
+      
       const expiryDate = new Date();
       expiryDate.setDate(expiryDate.getDate() + duration);
 
-      await updateDoc(doc(db, "users", userId), {
+      // PERFECT FIX: Using setDoc with merge:true instead of updateDoc
+      await setDoc(doc(db, "users", userId), {
         plan: "PREMIUM",
         dailyLimit: limit,
         expiry: expiryDate.toISOString()
-      });
+      }, { merge: true });
 
       await updateDoc(keyRef, { status: "USED", redeemedBy: userId });
       alert("Premium Plan Activated! Setup your Bot Settings now.");
       setKeyInput("");
-    } catch (error) {
-      alert("Error redeeming key.");
+    } catch (error: any) {
+      console.error(error);
+      alert("Error redeeming key: " + error.message);
     }
   }
 
