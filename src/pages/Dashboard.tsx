@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { User, signOut } from "firebase/auth";
 import { auth, db } from "../firebase";
 import { getIdToken } from "../services/auth";
@@ -11,12 +11,55 @@ export default function Dashboard({ user }: { user: User }) {
   const [keyInput, setKeyInput] = useState("");
   const [activeTab, setActiveTab] = useState("chat");
 
-  // Admin Variables - FIXED TYPESCRIPT ERROR
+  // Bot Settings Variables
+  const [waNumber, setWaNumber] = useState("");
+  const [businessName, setBusinessName] = useState("");
+  const [aiInstructions, setAiInstructions] = useState("");
+  const [savingSettings, setSavingSettings] = useState(false);
+
   const isAdmin = user.email === "oomg20330@gmail.com"; 
   const [customDays, setCustomDays] = useState<number | string>(30);
   const [msgLimit, setMsgLimit] = useState<number | string>(400);
   const [maxDevices, setMaxDevices] = useState<number | string>(1);
 
+  // Load Existing Settings from Firebase
+  useEffect(() => {
+    async function loadSettings() {
+      const userRef = doc(db, "users", user.uid);
+      const userSnap = await getDoc(userRef);
+      if (userSnap.exists() && userSnap.data().botSettings) {
+        const settings = userSnap.data().botSettings;
+        setWaNumber(settings.waNumber || "");
+        setBusinessName(settings.businessName || "");
+        setAiInstructions(settings.aiInstructions || "");
+      }
+    }
+    loadSettings();
+  }, [user.uid]);
+
+  // Save Settings Function
+  async function saveBotSettings() {
+    if (!waNumber || !businessName || !aiInstructions) {
+      return alert("Please fill all fields before saving.");
+    }
+    setSavingSettings(true);
+    try {
+      await setDoc(doc(db, "users", user.uid), {
+        botSettings: {
+          waNumber: waNumber,
+          businessName: businessName,
+          aiInstructions: aiInstructions
+        }
+      }, { merge: true });
+      alert("Bot settings saved successfully!");
+    } catch (error) {
+      alert("Error saving settings.");
+    } finally {
+      setSavingSettings(false);
+    }
+  }
+
+  // AI Test Function
   async function testAI() {
     if (!message.trim()) return;
     setBusy(true);
@@ -35,13 +78,13 @@ export default function Dashboard({ user }: { user: User }) {
       if (!response.ok) throw new Error(data.error || "AI request failed");
       setReply(data.reply);
     } catch (e: any) {
-      setReply(`Backend Error. Ensure API folder exists correctly.`);
+      setReply(`Backend Error: ${e.message}`);
     } finally {
       setBusy(false);
     }
   }
 
-  // Customer: Redeem Key
+  // Key Redemption Logic
   async function redeemPremiumKey(userId: string, key: string) {
     if (!key) return alert("Enter a valid key");
     try {
@@ -53,12 +96,11 @@ export default function Dashboard({ user }: { user: User }) {
 
       const data = keySnap.data();
       const duration = Number(data.durationDays) || 30;
-      const limit = Number(data.msgLimit) || 400; // Fix for old keys
+      const limit = Number(data.msgLimit) || 400; 
       
       const expiryDate = new Date();
       expiryDate.setDate(expiryDate.getDate() + duration);
 
-      // PERFECT FIX: Using setDoc with merge:true instead of updateDoc
       await setDoc(doc(db, "users", userId), {
         plan: "PREMIUM",
         dailyLimit: limit,
@@ -69,12 +111,11 @@ export default function Dashboard({ user }: { user: User }) {
       alert("Premium Plan Activated! Setup your Bot Settings now.");
       setKeyInput("");
     } catch (error: any) {
-      console.error(error);
       alert("Error redeeming key: " + error.message);
     }
   }
 
-  // Admin: Advanced Key Generation
+  // Admin Key Generation Logic
   async function generateCustomKey() {
     const newKey = "RP-" + Math.random().toString(36).substring(2, 10).toUpperCase();
     await setDoc(doc(db, "keys", newKey), {
@@ -103,7 +144,6 @@ export default function Dashboard({ user }: { user: User }) {
           Bot Settings
         </button>
         
-        {/* Hidden Admin Tab - Only visible to oomg20330@gmail.com */}
         {isAdmin && (
           <button className={activeTab === "admin" ? "" : "secondary"} onClick={() => setActiveTab("admin")} style={{ border: '1px solid #ff4b4b', color: '#ff4b4b' }}>
             👑 Admin Panel
@@ -136,20 +176,38 @@ export default function Dashboard({ user }: { user: User }) {
         </>
       )}
 
+      {/* FIXED BOT SETTINGS UI WITH STATE VARIABLES */}
       {activeTab === "settings" && (
         <section className="card">
           <h3>WhatsApp Bot Setup</h3>
           
           <label style={{ fontSize: '14px', color: '#aeb7d0' }}>WhatsApp Number (Format: 91XXXXXXXXXX)</label>
-          <input placeholder="e.g., 919876543210" style={{ marginBottom: '15px' }} />
+          <input 
+            placeholder="e.g., 919876543210" 
+            style={{ marginBottom: '15px' }} 
+            value={waNumber} 
+            onChange={(e) => setWaNumber(e.target.value)} 
+          />
 
           <label style={{ fontSize: '14px', color: '#aeb7d0' }}>Business Name</label>
-          <input placeholder="e.g., Trade Kingdom" style={{ marginBottom: '15px' }} />
+          <input 
+            placeholder="e.g., Trade Kingdom" 
+            style={{ marginBottom: '15px' }} 
+            value={businessName} 
+            onChange={(e) => setBusinessName(e.target.value)} 
+          />
           
           <label style={{ fontSize: '14px', color: '#aeb7d0' }}>Custom AI Instructions (Rules, Shop Address, Prices)</label>
-          <textarea placeholder="e.g., Always reply in Hinglish. No Cash on Delivery. Address is Main Market." style={{ minHeight: '100px', marginBottom: '15px' }} />
+          <textarea 
+            placeholder="e.g., Always reply in Hinglish. No Cash on Delivery. Address is Main Market." 
+            style={{ minHeight: '100px', marginBottom: '15px' }} 
+            value={aiInstructions} 
+            onChange={(e) => setAiInstructions(e.target.value)} 
+          />
           
-          <button>Save Settings</button>
+          <button onClick={saveBotSettings} disabled={savingSettings}>
+            {savingSettings ? "Saving..." : "Save Settings"}
+          </button>
         </section>
       )}
 
