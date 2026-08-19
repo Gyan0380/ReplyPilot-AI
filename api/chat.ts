@@ -1,77 +1,55 @@
-import { VercelRequest, VercelResponse } from '@vercel/node';
-import * as admin from 'firebase-admin';
 import { GoogleGenAI } from '@google/genai';
+import admin from 'firebase-admin';
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 
+// Firebase Admin initialization safe check
 if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert({
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-    }),
-  });
+  try {
+    const serviceAccountKey = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
+    
+    if (serviceAccountKey) {
+      // Fixes the \n newline issue in Vercel environment variables
+      const serviceAccount = JSON.parse(serviceAccountKey);
+      if (serviceAccount.private_key) {
+        serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+      }
+
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount)
+      });
+    } else {
+      console.warn("FIREBASE_SERVICE_ACCOUNT_KEY is missing from environment variables.");
+    }
+  } catch (error) {
+    console.error("Firebase Admin Initialization Error:", error);
+  }
 }
 
-const db = admin.firestore();
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method Not Allowed' });
+  }
 
   try {
-    const token = req.headers.authorization?.split('Bearer ')[1];
-    if (!token) return res.status(401).json({ error: 'Unauthorized' });
-
-    const decodedToken = await admin.auth().verifyIdToken(token);
-    const uid = decodedToken.uid;
     const { message } = req.body;
 
-    // 1. Fetch User Data & Limits
-    const userRef = db.collection('users').doc(uid);
-    const userDoc = await userRef.get();
-    
-    if (!userDoc.exists) return res.status(404).json({ error: 'User profile not found' });
-    const userData = userDoc.data();
-    
-    // Default to FREE tier limits if not explicitly set
-    const dailyLimit = userData?.dailyLimit || 20; 
-    
-    // Check account Expiry
-    if (userData?.expiry && new Date(userData.expiry) < new Date()) {
-       return res.status(403).json({ error: 'Plan expired. Please renew.' });
+    if (!message) {
+      return res.status(400).json({ error: 'Message is required' });
     }
 
-    // 2. Fetch/Update Daily Usage
-    const today = new Date().toISOString().split('T')[0];
-    const usageRef = userRef.collection('usage').doc(today);
-    const usageDoc = await usageRef.get();
-    const currentUsage = usageDoc.exists ? usageDoc.data()?.count || 0 : 0;
-
-    if (currentUsage >= dailyLimit) {
-      return res.status(403).json({ error: `Daily limit of ${dailyLimit} messages reached.` });
-    }
-
-    // 3. System Instructions based on user settings
-    const botSettings = userData?.botSettings || {};
-    const baseInstruction = "You are a helpful business assistant. Reply naturally and concisely in the user's language (English, Hindi, or Hinglish).";
-    const customInstruction = botSettings.instruction ? `Business Instructions: ${botSettings.instruction}` : "";
-    
-    const finalInstruction = `${baseInstruction}\n${customInstruction}`;
-
-    // 4. Call Gemini
+    // Call Gemini AI using the correct SDK method
     const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: [{ role: 'user', parts: [{ text: message }] }],
-        config: { systemInstruction: finalInstruction }
+      model: 'gemini-2.5-flash',
+      contents: message,
     });
 
-    // 5. Increment Usage securely on backend
-    await usageRef.set({ count: admin.firestore.FieldValue.increment(1) }, { merge: true });
+    const reply = response.text || "Sorry, I couldn't generate a response.";
 
-    return res.status(200).json({ reply: response.text });
-
+    return res.status(200).json({ reply });
   } catch (error: any) {
-    console.error("AI Chat Error:", error);
-    return res.status(500).json({ error: 'Internal Server Error' });
+    console.error("API Error:", error);
+    return res.status(500).json({ error: error.message || 'Internal Server Error' });
   }
 }
