@@ -1,7 +1,10 @@
 import { auth } from "../firebase";
 
-export async function getIdToken(): Promise<string> {
+export const getIdToken = async (): Promise<string | null> => {
   const user = auth.currentUser;
-  if (!user) throw new Error("Please login first.");
-  return user.getIdToken();
-}
+  if (user) {
+    // True forces a token refresh if needed
+    return await user.getIdToken(true); 
+  }
+  return null;
+};
