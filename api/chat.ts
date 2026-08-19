@@ -28,85 +28,89 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const { message, sender } = req.body;
+    const { message, sender, licenseKey } = req.body;
 
     if (!message) {
       return res.status(400).json({ error: 'Message is required' });
     }
 
-    // User identifier (agar sender nahi aaya toh default)
-    const userId = sender || 'default_user';
+    // 1. License Key Check (Subscription Verification)
+    if (!licenseKey) {
+      return res.status(401).json({ error: 'License key is missing. Please provide a valid key.' });
+    }
 
-    // 1. Firebase se settings fetch karna
-    let botSettings = {
-      storeName: "Developer Gyan - Digital Store",
-      customPrompt: "You are a secure and helpful assistant for Gyan's store.",
+    if (!db) {
+      return res.status(500).json({ error: 'Database connection error.' });
+    }
+
+    // Firestore se client ki key fetch karna
+    const licenseDoc = await db.collection('licenses').doc(licenseKey).get();
+
+    if (!licenseDoc.exists) {
+      return res.status(403).json({ error: 'Invalid License Key!' });
+    }
+
+    const licenseData = licenseDoc.data();
+    const currentTime = Date.now();
+
+    // Expiry check (Agar 1 month khatam ho gaya)
+    if (licenseData?.expiresAt && currentTime > licenseData.expiresAt) {
+      return res.status(403).json({ 
+        error: 'Your subscription has expired. Please renew your plan from admin panel.' 
+      });
+    }
+
+    if (licenseData?.status !== 'active') {
+      return res.status(403).json({ error: 'License is suspended or inactive.' });
+    }
+
+    // 2. Client-Specific Bot Settings Fetch Karna
+    const clientSettings = licenseData.botSettings || {
+      storeName: "Custom Business",
+      customPrompt: "You are a helpful assistant.",
       allowOffTopic: true,
-      pricesInfo: "Check web catalog for prices."
+      pricesInfo: "Contact admin for pricing."
     };
 
-    if (db) {
-      try {
-        const settingsDoc = await db.collection('settings').doc('botConfig').get();
-        if (settingsDoc.exists) {
-          botSettings = { ...botSettings, ...settingsDoc.data() } as any;
-        }
-      } catch (e) {
-        console.log("Using default settings.");
-      }
-    }
+    const userId = sender || 'default_user';
 
-    // 2. Us specific user ki chat history fetch karna taaki data mix na ho
+    // 3. User Chat History Fetch Karna (Is client ke alag folder se)
     let userHistory: any[] = [];
-    if (db) {
-      try {
-        const historyRef = db.collection('chats').doc(userId).collection('messages');
-        const snapshot = await historyRef.orderBy('timestamp', 'asc').limit(10).get();
-        snapshot.forEach(doc => {
-          const data = doc.data();
-          userHistory.push({ role: data.role, parts: [{ text: data.text }] });
-        });
-      } catch (e) {
-        console.log("History fetch failed.");
-      }
-    }
+    const historyRef = db.collection('licenses').doc(licenseKey).collection('chats').doc(userId).collection('messages');
+    const snapshot = await historyRef.orderBy('timestamp', 'asc').limit(10).get();
+    
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      userHistory.push({ role: data.role, parts: [{ text: data.text }] });
+    });
 
-    let offTopicRule = botSettings.allowOffTopic 
+    const offTopicRule = clientSettings.allowOffTopic 
       ? "Engage politely if user chats casually." 
       : "Strictly focus on store services and products only.";
 
     const systemInstruction = `
-      You are the official bot for ${botSettings.storeName}.
-      Instructions: ${botSettings.customPrompt}
-      Prices/Info: ${botSettings.pricesInfo}
+      You are the official bot for ${clientSettings.storeName}.
+      Instructions: ${clientSettings.customPrompt}
+      Prices/Info: ${clientSettings.pricesInfo}
       ${offTopicRule}
-      Never share data of one user with another. Keep conversations strictly isolated.
+      Never share data of other clients.
     `;
 
-    // Chat session start karna with user history
     const chat = ai.models.startChat({
       model: 'gemini-3.6-flash',
       history: userHistory,
-      config: {
-        systemInstruction: systemInstruction
-      }
+      config: { systemInstruction }
     });
 
     const result = await chat.sendMessage({ message });
     const reply = result.text || "Sorry, I couldn't process that.";
 
-    // 3. Nayi chat ko user ke alag folder mein save karna
-    if (db) {
-      try {
-        const historyRef = db.collection('chats').doc(userId).collection('messages');
-        await historyRef.add({ role: 'user', text: message, timestamp: Date.now() });
-        await historyRef.add({ role: 'model', text: reply, timestamp: Date.now() });
-      } catch (e) {
-        console.log("Failed to save chat history.");
-      }
-    }
+    // Chat History Save
+    await historyRef.add({ role: 'user', text: message, timestamp: currentTime });
+    await historyRef.add({ role: 'model', text: reply, timestamp: currentTime });
 
     return res.status(200).json({ reply });
+
   } catch (error: any) {
     console.error("API Error:", error);
     return res.status(500).json({ error: error.message || 'Internal Server Error' });
