@@ -96,7 +96,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       Never share data of other clients.
     `;
 
-    const chat = ai.models.startChat({
+    const chat = ai.chats.create({
       model: 'gemini-1.5-flash',
       history: userHistory,
       config: { systemInstruction }
