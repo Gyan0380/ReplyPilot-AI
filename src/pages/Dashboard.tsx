@@ -11,11 +11,11 @@ export default function Dashboard({ user }: { user: User }) {
   const [keyInput, setKeyInput] = useState("");
   const [activeTab, setActiveTab] = useState("chat");
 
-  // Admin Variables
-  const isAdmin = user.email === "oomg20330@gmail.com"; // SUPER ADMIN LOCK
-  const [customDays, setCustomDays] = useState(30);
-  const [msgLimit, setMsgLimit] = useState(400);
-  const [maxDevices, setMaxDevices] = useState(1);
+  // Admin Variables - FIXED TYPESCRIPT ERROR
+  const isAdmin = user.email === "oomg20330@gmail.com"; 
+  const [customDays, setCustomDays] = useState<number | string>(30);
+  const [msgLimit, setMsgLimit] = useState<number | string>(400);
+  const [maxDevices, setMaxDevices] = useState<number | string>(1);
 
   async function testAI() {
     if (!message.trim()) return;
@@ -35,7 +35,7 @@ export default function Dashboard({ user }: { user: User }) {
       if (!response.ok) throw new Error(data.error || "AI request failed");
       setReply(data.reply);
     } catch (e: any) {
-      setReply(`Backend Error. Check API folder.`);
+      setReply(`Backend Error. Ensure API folder exists correctly.`);
     } finally {
       setBusy(false);
     }
@@ -51,8 +51,8 @@ export default function Dashboard({ user }: { user: User }) {
       if (!keySnap.exists()) return alert("Invalid Key");
       if (keySnap.data().status === "USED") return alert("Key already used!");
 
-      const duration = keySnap.data().durationDays;
-      const limit = keySnap.data().msgLimit;
+      const duration = Number(keySnap.data().durationDays);
+      const limit = Number(keySnap.data().msgLimit);
       const expiryDate = new Date();
       expiryDate.setDate(expiryDate.getDate() + duration);
 
@@ -164,7 +164,7 @@ export default function Dashboard({ user }: { user: User }) {
               <input type="number" value={msgLimit} onChange={e => setMsgLimit(e.target.value)} />
             </div>
             <div style={{ flex: 1 }}>
-              <label style={{ fontSize: '12px' }}>Max Devices/Accounts</label>
+              <label style={{ fontSize: '12px' }}>Max Devices</label>
               <input type="number" value={maxDevices} onChange={e => setMaxDevices(e.target.value)} />
             </div>
           </div>
