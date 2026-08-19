@@ -97,7 +97,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     `;
 
     const chat = ai.models.startChat({
-      model: 'gemini-3.6-flash',
+      model: 'gemini-1.5-flash',
       history: userHistory,
       config: { systemInstruction }
     });
