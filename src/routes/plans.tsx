@@ -27,7 +27,7 @@ function PlansPage() {
         <p className="text-sm text-muted-foreground">Loading plans...</p>
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-          {plans.map((p) => (
+          {plans?.map((p) => (
             <Card key={p.id} className="flex flex-col justify-between">
               <CardHeader>
                 <div className="flex justify-between items-center">
@@ -38,12 +38,12 @@ function PlansPage() {
               </CardHeader>
               <CardContent className="space-y-2 text-sm text-muted-foreground">
                 <div className="flex items-center gap-2"><Check className="size-4 text-primary" /> Speed: {p.speed}</div>
-                <div className="flex items-center gap-2"><Check className="size-4 text-primary" /> {p.languages.join(", ")}</div>
+                <div className="flex items-center gap-2"><Check className="size-4 text-primary" /> {p.languages?.join(", ")}</div>
               </CardContent>
               <CardFooter>
                 <Button className="w-full" variant="outline">Select Plan</Button>
               </CardFooter>
-            </CardCard>
+            </Card>
           ))}
         </div>
       )}
