@@ -1,6 +1,6 @@
-const express = require('express');
-const axios = require('axios');
-const { createClient } = require('@supabase/supabase-js');
+import express from 'express';
+import axios from 'axios';
+import { createClient } from '@supabase/supabase-js';
 
 const app = express();
 app.use(express.json());
@@ -63,5 +63,12 @@ app.post('/api/chat', async (req, res) => {
     }
 });
 
+// Vite/Railway Compatibility: 
+// Development mode mein manually run hoga, Production mein Vite app.listen khud handle karega.
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Railway Central Server running on port ${PORT}`));
+if (process.env.NODE_ENV !== 'production') {
+    app.listen(PORT, () => console.log(`Railway Central Server running on port ${PORT}`));
+}
+
+// VITE/NITRO KO YAHI DEFAULT EXPORT CHAHIYE THA
+export default app;
